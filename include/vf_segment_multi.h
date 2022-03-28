@@ -41,6 +41,7 @@ class Segment3DMulti{
         double f =  c0*(1 - relative_coord[2]) + c1*relative_coord[2];
         return f;
     }
+
 public:
     void init(std::string datapath){
         std::ifstream f(datapath, std::ios::in | std::ios::binary);

@@ -117,9 +117,6 @@ public:
 
         // internal force
         vec3 f_in = compute_curvature(pos, tris_around);
-
-//        return f_in * m_smooth * m_time_step;
-
         return (f_ex + f_in * m_smooth)*m_time_step;
     }
 

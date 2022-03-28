@@ -1,76 +1,17 @@
-#pragma once
+#ifndef FLUID_VTK_H
+#define FLUID_VTK_H
+
+#include <string>
 #include "common/vf_common.h"
-#include <vector>
+#include <fstream>
+
 #include "common/kdtree/KDTreeVectorOfVectorsAdaptor.h"
 #include "common/Eigen/Eigen"
 
-#include <fstream>
-#include <list>
-
-//#include "common/kdtree/vf_kdtree.h"
-
+// Load from VTK file
 namespace VF3D {
-
-typedef std::vector<vec3> vec3array;
 typedef KDTreeVectorOfVectorsAdaptor< vec3array, double, 3,
 nanoflann::metric_L2_Simple>  kdtree_flann;
-
-
-
-//// Graph class represents a undirected graph
-//// using adjacency list representation
-//class Graph {
-//    int V; // No. of vertices
-
-//    // Pointer to an array containing adjacency lists
-//    std::vector<std::list<int>> adj;
-
-//    // A function used by DFS
-//    void DFSUtil(int v, std::vector<int>& visited, int label){
-//        // Mark the current node as visited and print it
-//        visited[v] = label;
-
-//        // Recur for all the vertices
-
-//        // adjacent to this vertex
-//        std::list<int>::iterator i;
-//        for (i = adj[v].begin(); i != adj[v].end(); ++i)
-//            if (visited[*i] == -1)
-//                DFSUtil(*i, visited, label);
-//    }
-
-//public:
-//    Graph(int V) // Constructor
-//    {
-//        this->V = V;
-//        adj = std::vector<std::list<int>>(V);
-//    }
-//    ~Graph(){
-
-//    }
-//    void addEdge(int v, int w){
-//        adj[v].push_back(w);
-//        adj[w].push_back(v);
-//    }
-
-//    std::vector<int> connectedComponents(){
-//        // Mark all the vertices as not visited
-//        std::vector<int> labeling(V, -1);
-
-//        int label = 0;
-//        for (int v = 0; v < V; v++) {
-//            if (labeling[v] == -1) {
-//                // print all reachable vertices
-//                // from v
-//                DFSUtil(v, labeling, label++);
-//            }
-//        }
-
-//        std::cout << label + 1 << " connected component";
-
-//        return labeling;
-//    }
-//};
 
 class Anisotropic{
     // influence radius
@@ -164,11 +105,9 @@ class Anisotropic{
         return m_G[idx];
     }
 
-
     void compute_tranformation_mat_for_particle(int idx)
     {
         // 1 - 6 - 6000 - 10
-
         vec3 pos = m_particlePos[idx];
         auto neighbor = neighbor_search(pos, m_r);
 
@@ -212,9 +151,6 @@ class Anisotropic{
         mat3 Q = svd.matrixU();
         vec3 L = svd.singularValues();
 
-//        std::cout << "------ SVD: " << L[0] << " " << L[1] << " " << L[2] << std::endl;
-//        std::cout << C.determinant() << ":";
-
         mat3 Sigma = mat3::Zero();
 
         for (int d = 0; d < 3; d++)
@@ -240,43 +176,7 @@ class Anisotropic{
 public:
     std::vector<uint8_t> m_labels;
     void build_labeling(){
-//        Graph g(m_particlePos.size());
-//        for(int i = 0; i < m_particlePos.size(); i++)
-//        {
-//            auto pos = m_particlePos[i];
-//            auto neighbor = neighbor_search(pos, 0.0195);
-//            for(auto n : neighbor )
-//            {
-//                if(n.first != i)
-//                {
-//                    g.addEdge(i, n.first);
-//                }
-//            }
-//        }
 
-//        m_labels = g.connectedComponents();
-
-//        // Debugging
-//        for(int l = 0; l < 128; l++)
-//        {
-//            std::stringstream ss;
-//            ss << "LOG/label_" << l << ".obj";
-//            std::ofstream f(ss.str());
-//            bool exist = false;
-//            for(int i = 0; i < m_particlePos.size(); i++)
-//            {
-//                if(m_labels[i] == l)
-//                {
-//                    exist = true;
-//                    auto p = m_particlePos[i];
-//                    f << "v " << p[0] << " " << p[1] << " " << p[2] << std::endl;
-//                }
-//            }
-//            f.close();
-
-//            if(!exist)
-//                break;
-//        }
     }
 public:
     double scalar_value(vec3 pos, int idx){
@@ -308,24 +208,6 @@ public:
 public:
     Anisotropic(){
 
-//        // test
-//        std::vector<vec3> all_pos = {
-//            {0,0,0}, {1,0,0}, {0,0,1}
-//        };
-
-//        /*KDTreeVectorOfVectorsAdaptor< std::vector<std::vector<double>>, double, 3 >*/
-//        kdtree_flann tree(3, all_pos);
-//        tree.index->buildIndex();
-
-//        // search
-//        std::vector<std::pair<size_t, double>> resultSet;
-//        vec3 pos(0,0,0);
-//        tree.index->radiusSearch(pos.data(),
-//                                      1.5,
-//                                      resultSet,
-//                                      nanoflann::SearchParams());
-
-//        std::cout << resultSet.size() << " points " << std::endl;
     };
     ~Anisotropic(){}
 
@@ -336,14 +218,8 @@ public: // Debugging
         m_labels = labels;
         build_kd_tree();
 
-
-
 //        laplace_smooth();
 //        build_kd_tree();
-
-
-
-
 
         // Allocate
         m_G.resize(m_particlePos.size());
@@ -354,5 +230,197 @@ public: // Debugging
     }
 };
 
-}
+class fluid
+{
+    std::shared_ptr<std::ifstream>  m_file_stream;
+    int num_particle;
+    double spacing_delta;
+    int m_speed = 1;
 
+
+    double m_r = 0.039; // 1.3 * 0.0195
+
+    std::shared_ptr<kdtree_flann> m_kdtree;
+    std::vector<vec3> m_curParticlesPos;
+    std::vector<vec3> m_nextParticlesPos;
+
+
+    double weight_func(vec3 pos1, vec3 pos2, double radius){
+        double r = (pos1 - pos2).norm() / radius;
+        if (r > 1){
+            return 0;
+        }
+
+        return 1 - r*r*r;
+    }
+
+    std::vector<std::pair<size_t, double>> find_neighbor(vec3 pos){
+        std::vector<std::pair<size_t, double>> resultSet;
+        m_kdtree->index->radiusSearch(pos.data(),
+                                      m_r * m_r,
+                                      resultSet,
+                                      nanoflann::SearchParams());
+        return resultSet;
+    }
+
+
+    void clamp_pos(vec3 &p)
+    {
+        for(int i = 0; i < 3; i++)
+        {
+            p[i] = std::max(0., p[i]);
+            p[i] = std::min(1., p[i]);
+        }
+    }
+
+    // Anisotropic kernel
+    Anisotropic m_kernel;
+    vec3 get_projection_displacement(vec3 pos, vec3 norm){
+        double alpha = 0.001;
+
+        double phi = m_kernel.scalar_value(pos);
+
+        if(phi < 1e-8){ // outside
+            return -norm * 0.015 * 0.1;
+        }
+        else{
+            return norm * phi * alpha;
+        }
+    }
+
+public:
+    fluid(){};
+    ~fluid(){}
+
+    // Maximum displacement between two iterations is 0.008
+    // By loading multiple iteration at one, the maximum displacement
+    //      is multiplied and increases
+    void set_speed(int speed){m_speed = speed;}
+
+    vec3 get_displacement(vec3 pos, vec3 norm){
+        auto neighbors = find_neighbor(pos);
+
+        if(neighbors.size() == 0)
+        {
+            return -norm * m_r / 10;
+        }
+
+        vec3 displace(0,0,0);
+        double sum_omega = 0;
+        for(auto ni : neighbors)
+        {
+            auto npos = m_curParticlesPos[ni.first];
+            double omega = weight_func(pos, npos, m_r);
+
+            sum_omega += omega;
+            displace += (m_nextParticlesPos[ni.first]
+                    - m_curParticlesPos[ni.first])*omega;
+        }
+
+        assert(sum_omega > 1e-10);
+        displace /= sum_omega;
+
+        vec3 newPos = pos + displace;
+
+        // Projection
+        vec3 project = get_projection_displacement(newPos, norm);
+        newPos = newPos + project;
+
+        clamp_pos(newPos);
+
+        displace = newPos - pos;
+
+        return displace;
+    }
+
+
+    // New data type
+    void init(std::string path){
+        m_file_stream = std::shared_ptr<std::ifstream>(
+                    new std::ifstream(path, std::ios::in | std::ios::binary));
+        if(!m_file_stream->is_open()){
+            std::cout << "Cannot open data file: " << path;
+            exit(1);
+        }
+
+       m_file_stream->read((char*)&num_particle, sizeof(int));
+       m_file_stream->read((char*)&spacing_delta, sizeof(double));
+
+       // check header num_particle and spacing delta
+       if(num_particle != 100000){
+           std::cout << "Wrong file data for fluid 3D";
+           exit(1);
+       }
+
+       std::cout << num_particle << " * " << spacing_delta << std::endl << std::flush;
+    }
+
+    bool next_iteration(){
+        if(m_nextParticlesPos.size() == 0)
+            m_curParticlesPos = load_next_particle();
+        else
+            m_curParticlesPos = m_nextParticlesPos;
+
+        m_nextParticlesPos = load_next_particle(m_speed);
+
+        // Build annisotropic kernel
+        m_kernel.build(m_nextParticlesPos, m_labels);
+
+        // Build kd-tree
+        m_kdtree = std::shared_ptr<kdtree_flann>(
+                    new kdtree_flann(3,
+                                     m_curParticlesPos,
+                                     10)); // leaf size
+        m_kdtree->index->buildIndex();
+
+        return m_nextParticlesPos.size() > 0;
+    }
+
+    // Tobe removed
+    void load_anisotropic(int iter){
+        size_t buffer_size = sizeof(float) // timestep
+                + num_particle * 3 * sizeof(unsigned short)
+                + num_particle; // buffer
+        size_t begin_size = sizeof(int) + sizeof(double);
+
+        m_file_stream->seekg(buffer_size * (iter) + begin_size);
+
+        auto pos = load_next_particle();
+        std::cout << "Load vel at iter " << iter << ", " << m_cur_time << std::endl;
+
+        m_kernel.build(pos, m_labels);
+    }
+
+
+    float get_cur_time(){return m_cur_time;}
+    size_t get_fluid_sim_step(){return m_cur_time/0.0005;}
+
+private:
+    float m_cur_time;
+    std::vector<uint8_t> m_labels;
+    std::vector<vec3> load_next_particle(int speed = 1){
+        size_t buffer_size = sizeof(float) // timestep
+                + num_particle * 3 * sizeof(unsigned short) // position
+                + num_particle; // buffer connected component
+        m_file_stream->seekg(buffer_size*(speed-1), std::ios_base::cur);
+
+        std::vector<short> pos_i(num_particle * 3);
+        m_labels.resize(num_particle);
+
+        if(!m_file_stream->read((char*)&m_cur_time, sizeof(float)) ||
+           !m_file_stream->read((char*)pos_i.data(),pos_i.size() * sizeof(unsigned short)) ||
+           !m_file_stream->read((char*)m_labels.data(), num_particle))
+            return std::vector<VF3D::vec3>();
+
+        vec3array pos(num_particle);
+        for(int i = 0; i < num_particle; i++){
+            pos[i] = vec3((unsigned short)pos_i[i*3],
+                    (unsigned short)pos_i[i*3 + 1],
+                    (unsigned short)pos_i[i*3 + 2]) * spacing_delta;
+        }
+
+        return pos;
+    }
+};
+}
+#endif // FLUID_VTK_H
