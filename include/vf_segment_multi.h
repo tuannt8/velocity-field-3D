@@ -9,13 +9,17 @@
 
 namespace VF3D {
 class Segment3DMulti{
+    int m_iter = 0;
     // The image
     int m_dim[3];
     std::vector<double> m_voxels; // row major
 
     std::vector<double> mean_intensity = {0, 0.36, 0.62, 0.73};
-    double m_time_step = 0.5;
-    double m_smooth_coef = 0.02;//relateable to intensity, avg = 0.02
+
+    // For reference
+    double m_time_step = 1; //
+    double m_smooth_coef = 0.1;//
+    double m_clamp_pos_threshold = 0.5;
 
     inline int index(int x, int y, int slice){
         return slice * m_dim[0] * m_dim[1] + x*m_dim[1] + y;
@@ -69,11 +73,30 @@ public:
         f.close();
     }
 
+    void next_iteration(){
+        m_iter++;
+        std::cout << "+++++ Vel iter " << m_iter << std::endl;
+    }
+
+    void clamp_pos(vec3 & p)
+    {
+        static vec3 domain_size(151,155,100);
+         for(int i = 0; i < 3; i++)
+         {
+             if(abs(p[i]) < 0)
+                 p[i] = 0;
+
+             if(p[i] > domain_size[i])
+                 p[i] = domain_size[i];
+         }
+    }
+
     // Binary search for the exact location
     std::vector<vec3> get_displacement_triangle(vec3 pi0, vec3 pi1, vec3 pi2,
                                                 vec3 norm, int label_in, int label_out, double max_distance)
-    {
+    {        
         std::vector<vec3> forces(3, vec3(0,0,0));
+
 
         vec3 p[3] = {pi0, pi1, pi2};
         // external force
@@ -84,8 +107,11 @@ public:
         vec3 p0 = pos - norm * max_distance;
         vec3 p1 = pos + norm * max_distance;
 
-        for(int i = 0; i < 8; i++)
+        for(int i = 0; i < 7; i++)
         {
+            if((p0-p1).norm() < 0.01)
+                break;
+
             double f0 = get_priciple_external_force(p0, label_in, label_out);
             double f1 = get_priciple_external_force(p1, label_in, label_out);
 
@@ -94,32 +120,40 @@ public:
                 if(f1 > 0){
                     // p1 is also inside
                     p0 = p1;
-                    break;
                 }
                 else{
-                    // p1 is outside
-                    p1 = (p0 + p1)*0.5;
+                    // p1 is out side
+                    double f_mid = get_priciple_external_force((p0+p1)*0.5, label_in, label_out);
+                    if(f_mid > 0)
+                        p0 = (p0 + p1)*0.5;
+                    else
+                        p1 = (p0 + p1)*0.5;
                 }
             }
             else{ // p0 is outside
-                p1 = p0; // move to p0
-                break;
+                if(f1 > 0){
+                    // p1 is inside
+                    double f_mid = get_priciple_external_force((p0+p1)*0.5, label_in, label_out);
+                    if(f_mid > 0)
+                        p1 = (p0 + p1)*0.5;
+                    else
+                        p0 = (p0 + p1)*0.5;
+                }
+                else
+                {
+                    // Both are outside
+                    p1 = p0; // move to p0
+                }
             }
         }
 
         // Final pos
         vec3 final_dis = (p0 + p1)*0.5 - pos;
-        // If projection is small, switch to force model
-        if(true
-//                final_dis.norm() < max_distance/10
-                ){
-            return get_displacement_triangle(pi0, pi1, pi2, norm, label_in, label_out);
-        }
-        else
-        {
-            forces = {final_dis, final_dis, final_dis};
-            return forces;
-        }
+        forces = {final_dis, final_dis, final_dis};
+
+
+
+        return forces;
     }
 
     std::vector<vec3> get_internal_force(vec3 pi0, vec3 pi1, vec3 pi2)
@@ -133,13 +167,13 @@ public:
             vec3 ab = others[1] - others[0];
             vec3 a = others[0];
 
-            double t = ab.dot(a-cp) / std::pow(ab.norm(), 2);
+            double t = ab.dot(cp - a) / std::pow(ab.norm(), 2);
             vec3 H = a + ab*t;
-            vec3 HC = H - cp;
+            vec3 CH = H - cp;
 
-            vec3 f = -HC * ab.norm();
+            vec3 f = CH * ab.norm();
 
-            forces[i] += f;
+            forces[i] = f * m_smooth_coef;
         }
 
         return forces;
@@ -153,25 +187,27 @@ public:
 
         double area = std::pow( ((p[2] - p[0]).cross(p[1] - p[0])).norm(), 2 ) * 0.5;
 
-        // external force
-        std::vector<vec3> gauss_point = {vec3(0.3333, 0.33333, 0.33333)};
-        std::vector<double> weight = {1.};
-        for(size_t i = 0; i < gauss_point.size(); i++)
-        {
-            vec3 g = gauss_point[i];
-            double w =  weight[i];
-            vec3 pos = p[0]*g[0] + p[1]*g[1] + p[2]*g[2];
-            vec3 f = get_displacement(pos, norm, label_in, label_out) * w * area;
+//        // external force
+//        static std::vector<vec3> gauss_point = {
+//            vec3(1./6., 1./6, 2./3),
+//            vec3(1./6, 2./3, 1./6),
+//            vec3(2./3, 1./6, 1./6),
+//        };
+//        static std::vector<double> weight = {1./3, 1./3, 1./3};
+//        for(size_t i = 0; i < gauss_point.size(); i++)
+//        {
+//            vec3 g = gauss_point[i];
+//            double w =  weight[i];
+//            vec3 pos = p[0]*g[0] + p[1]*g[1] + p[2]*g[2];
+//            vec3 f = get_displacement(pos, norm, label_in, label_out) * w * area;
 
-
-            forces[0] += f * g[0];
-            forces[1] += f * g[1];
-            forces[2] += f * g[2];
-        }
-
+//            forces[0] += f * g[0];
+//            forces[1] += f * g[1];
+//            forces[2] += f * g[2];
+//        }
 
         // internal force
-        for(int i = 0; i < 3; i++){
+        for(int i = 0; i < 3; i++){//compute base on new position
             vec3 cp = p[i];
             vec3 others[2] = {p[(i+1)%3], p[(i+2)%3]};
 
@@ -181,7 +217,7 @@ public:
             double t = ab.dot(a-cp) / std::pow(ab.norm(), 2);
             vec3 H = a + ab*t;
             vec3 HC = H - cp;
-            // HC.normalized();
+            HC.normalized();
 
             vec3 f = HC * ab.norm() * m_smooth_coef * m_time_step;
 
