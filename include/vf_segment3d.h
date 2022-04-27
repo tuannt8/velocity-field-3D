@@ -15,7 +15,7 @@ class Segment3D{
     double c_in = 0.83;
     double c_out = 0.39;
     double m_time_step = 2;//for final: 5 = max_dis = 1.5
-    double m_smooth = 0.1;
+    double m_smooth = 0.02;
 
     inline int index(int x, int y, int slice){
         return slice * m_dim[0] * m_dim[1] + x*m_dim[1] + y;
@@ -59,28 +59,66 @@ class Segment3D{
 
         return theta;
     }
-    vec3 compute_curvature(vec3 pos, std::vector<std::vector<vec3>> tri_around){
-        double c = 0;
-        vec3 average_pos(0,0,0);
-        for(auto poses : tri_around)
+
+
+    std::vector<vec3> get_external_triangle_based(vec3 p0, vec3 p1, vec3 p2, vec3 norm)
+    {
+        static std::vector<vec3> gauss_point = {vec3(1./3., 1./3., 1./3.)};
+        static std::vector<double> weight = {1.};
+
+        std::vector<vec3> output(3, vec3(0,0,0));
+
+        for(size_t i = 0; i < gauss_point.size(); i++)
         {
-            vec3 p1 = poses[1];
-            vec3 p2 = poses[2];
+            vec3 g = gauss_point[i];
+            double w = weight[i];
 
-            c += get_curvature_tri(pos, p1, p2);
-            average_pos += (p1 + p2)*0.5;
+            vec3 pos = p0 * g[0] + p1 * g[1] + p2 * g[2];
+
+
+            double v = interpolate_intensity(pos);
+            double f = (2*v - c_in - c_out) * (c_out - c_in);
+            vec3 f_v = -norm * (f * w);
+
+            output[0] += f_v * g[0];
+            output[1] += f_v * g[1];
+            output[2] += f_v * g[2];
         }
-        average_pos /= tri_around.size();
-        double curvature = std::max(0., 2*3.1415963 - c);
 
-        vec3 curvature_vector = average_pos - pos;
-        curvature_vector.normalize();
+        return output;
+    }
 
-        return curvature_vector * curvature;
+    std::vector<vec3> get_internal_triangle_based(vec3 pi0, vec3 pi1, vec3 pi2)
+    {
+        vec3 p[3] = {pi0, pi1, pi2};
+        std::vector<vec3> forces(3, vec3(0,0,0));
+        for(int i = 0; i < 3; i++){
+            vec3 cp = p[i];
+            vec3 others[2] = {p[(i+1)%3], p[(i+2)%3]};
+
+            vec3 ab = others[1] - others[0];
+            vec3 a = others[0];
+
+            double t = ab.dot(cp - a) / std::pow(ab.norm(), 2);
+            vec3 H = a + ab*t;
+            vec3 CH = H - cp;
+            CH.normalize();
+
+            vec3 f = CH * ab.norm();
+
+            forces[i] = f * m_smooth;
+        }
+
+        return forces;
     }
 public:
     Segment3D(){}
     ~Segment3D(){}
+
+    bool is_finish(){
+        static int iter = 0;
+        return iter++ > 60;
+    }
 
     void load(std::string path){
         std::ifstream f(path, std::ios::in | std::ios::binary);
@@ -108,24 +146,28 @@ public:
         f.close();
     }
 
-    vec3 get_displacement(vec3 pos, vec3 norm,
-                          std::vector<std::vector<vec3>> tris_around){
-        // external force
-        double v = interpolate_intensity(pos);
-        double f = (2*v - c_in - c_out) * (c_out - c_in);
-        vec3 f_ex = -norm * f;
+    std::vector<vec3> get_displacement_triangle_based(vec3 p0, vec3 p1, vec3 p2, vec3 norm)
+    {
+        auto external = get_external_triangle_based(p0, p1, p2, norm);
+        auto internal = get_internal_triangle_based(p0, p1, p2);
 
-        // internal force
-        vec3 f_in = compute_curvature(pos, tris_around);
-        return (f_ex + f_in * m_smooth)*m_time_step;
+        std::vector<vec3> out(3, vec3(0,0,0));
+
+        for(int i = 0; i < 3; i++)
+        {
+            out[i] = (internal[i] + external[i])*m_time_step;
+//            out[i] = ( internal[i])*m_time_step;
+        }
+
+        return out;
     }
+
 
     vec3 get_displacement(vec3 pos, vec3 norm){
         double v = interpolate_intensity(pos);
         double f = (2*v - c_in - c_out) * (c_out - c_in);
         return -norm * f * m_time_step;
     }
-
 
     // Image info
     int no_slice(){return m_dim[2];}
