@@ -14,7 +14,7 @@ class Segment3D{
 
     double c_in = 0.83;
     double c_out = 0.39;
-    double m_time_step = 2;//for final: 5 = max_dis = 1.5
+    double m_time_step = 15;//for final: 5 = max_dis = 1.5
     double m_smooth = 0.02;
 
     inline int index(int x, int y, int slice){
@@ -68,6 +68,8 @@ class Segment3D{
 
         std::vector<vec3> output(3, vec3(0,0,0));
 
+        double area = (p1-p0).dot(p2-p0) * 0.5;
+
         for(size_t i = 0; i < gauss_point.size(); i++)
         {
             vec3 g = gauss_point[i];
@@ -78,7 +80,7 @@ class Segment3D{
 
             double v = interpolate_intensity(pos);
             double f = (2*v - c_in - c_out) * (c_out - c_in);
-            vec3 f_v = -norm * (f * w);
+            vec3 f_v = -norm * (f * w );
 
             output[0] += f_v * g[0];
             output[1] += f_v * g[1];
@@ -104,7 +106,7 @@ class Segment3D{
             vec3 CH = H - cp;
             CH.normalize();
 
-            vec3 f = CH * ab.norm();
+            vec3 f = CH;
 
             forces[i] = f * m_smooth;
         }
@@ -117,7 +119,23 @@ public:
 
     bool is_finish(){
         static int iter = 0;
-        return iter++ > 60;
+        return iter++ > 50;
+    }
+
+    void log(int z)
+    {
+        for(int i = 0; i < m_dim[0]; i++)
+        {
+            for(int j = 0; j < m_dim[1]; j++)
+            {
+                if(get_scalar(i,j,z) < 0.5)
+                    std::cout << "*";
+                else
+                    std::cout << " ";
+
+            }
+            std::cout << std::endl;
+        }
     }
 
     void load(std::string path){
@@ -156,7 +174,6 @@ public:
         for(int i = 0; i < 3; i++)
         {
             out[i] = (internal[i] + external[i])*m_time_step;
-//            out[i] = ( internal[i])*m_time_step;
         }
 
         return out;
