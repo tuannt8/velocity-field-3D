@@ -18,8 +18,8 @@ class Segment3DMulti{
 
     // For reference
     double m_time_step = 1; //
-    double m_smooth_coef = 0.1;//
-    double m_clamp_pos_threshold = 0.5;
+    double m_smooth_coef = 0.02;//
+    double m_move_limit;
 
     inline int index(int x, int y, int slice){
         return slice * m_dim[0] * m_dim[1] + x*m_dim[1] + y;
@@ -91,10 +91,17 @@ public:
          }
     }
 
+    void set_move_limit(double move_limit = 1)
+    {
+        m_move_limit = move_limit;
+    }
+
     // Binary search for the exact location
-    std::vector<vec3> get_displacement_triangle(vec3 pi0, vec3 pi1, vec3 pi2,
-                                                vec3 norm, int label_in, int label_out, double max_distance)
-    {        
+    std::vector<vec3> binary_search_displacement(vec3 pi0, vec3 pi1, vec3 pi2,
+                                                vec3 norm, int label_in, int label_out)
+    {
+        double max_distance = m_move_limit;
+
         std::vector<vec3> forces(3, vec3(0,0,0));
 
 
@@ -182,49 +189,20 @@ public:
     std::vector<vec3> get_displacement_triangle(vec3 p0, vec3 p1, vec3 p2,
                                                 vec3 norm, int label_in, int label_out)
     {
-        vec3 p[3] = {p0, p1, p2};
-        std::vector<vec3> forces(3, vec3(0,0,0));
-
-        double area = std::pow( ((p[2] - p[0]).cross(p[1] - p[0])).norm(), 2 ) * 0.5;
-
-//        // external force
-//        static std::vector<vec3> gauss_point = {
-//            vec3(1./6., 1./6, 2./3),
-//            vec3(1./6, 2./3, 1./6),
-//            vec3(2./3, 1./6, 1./6),
-//        };
-//        static std::vector<double> weight = {1./3, 1./3, 1./3};
-//        for(size_t i = 0; i < gauss_point.size(); i++)
-//        {
-//            vec3 g = gauss_point[i];
-//            double w =  weight[i];
-//            vec3 pos = p[0]*g[0] + p[1]*g[1] + p[2]*g[2];
-//            vec3 f = get_displacement(pos, norm, label_in, label_out) * w * area;
-
-//            forces[0] += f * g[0];
-//            forces[1] += f * g[1];
-//            forces[2] += f * g[2];
-//        }
+        // external force
+        auto ex_f = binary_search_displacement(p0, p1, p2, norm, label_in, label_out);
 
         // internal force
-        for(int i = 0; i < 3; i++){//compute base on new position
-            vec3 cp = p[i];
-            vec3 others[2] = {p[(i+1)%3], p[(i+2)%3]};
+        auto in_f = get_internal_force(p0, p1, p2);
 
-            vec3 ab = others[1] - others[0];
-            vec3 a = others[0];
-
-            double t = ab.dot(a-cp) / std::pow(ab.norm(), 2);
-            vec3 H = a + ab*t;
-            vec3 HC = H - cp;
-            HC.normalized();
-
-            vec3 f = HC * ab.norm() * m_smooth_coef * m_time_step;
-
-            forces[i] += f;
+        std::vector<vec3> final_force(3, vec3(0,0,0));
+        for(int i = 0; i < 3; i++)
+        {
+            final_force[i] = ex_f[i] + in_f[i];
+//            clamp_pos(final_force[i]);
         }
 
-        return forces;
+        return final_force;
     }
 
     double get_priciple_external_force(vec3 pos, int label_in, int label_out){
@@ -259,6 +237,11 @@ public:
         double c_out = mean_intensity[label_out];
         double f = (2*v - c_in - c_out) * (c_out - c_in);
         return -norm * f * m_time_step;
+    }
+
+    bool is_finish(){
+        static int iter = 0;
+        return iter++ > 50;
     }
 
     // Image info

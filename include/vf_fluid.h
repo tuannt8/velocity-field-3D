@@ -346,13 +346,15 @@ public:
        m_file_stream->read((char*)&num_particle, sizeof(int));
        m_file_stream->read((char*)&spacing_delta, sizeof(double));
 
+       std::cout << num_particle << " * " << spacing_delta << std::endl << std::flush;
+
        // check header num_particle and spacing delta
-       if(num_particle != 100000){
+       if(num_particle != 79036){
            std::cout << "Wrong file data for fluid 3D";
            exit(1);
        }
 
-       std::cout << num_particle << " * " << spacing_delta << std::endl << std::flush;
+
     }
 
     bool next_iteration(){
