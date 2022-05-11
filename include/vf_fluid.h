@@ -218,9 +218,6 @@ public: // Debugging
         m_labels = labels;
         build_kd_tree();
 
-//        laplace_smooth();
-//        build_kd_tree();
-
         // Allocate
         m_G.resize(m_particlePos.size());
         m_detG.resize(m_particlePos.size());
@@ -295,7 +292,10 @@ public:
     // Maximum displacement between two iterations is 0.008
     // By loading multiple iteration at one, the maximum displacement
     //      is multiplied and increases
-    void set_speed(int speed){m_speed = speed;}
+    void set_speed(int speed){
+        m_speed = speed;
+        std::cout <<"Fluid speed " << speed << std::endl;
+    }
 
     vec3 get_displacement(vec3 pos, vec3 norm){
         auto neighbors = find_neighbor(pos);
@@ -334,7 +334,7 @@ public:
     }
 
 
-    // New data type
+
     void init(std::string path){
         m_file_stream = std::shared_ptr<std::ifstream>(
                     new std::ifstream(path, std::ios::in | std::ios::binary));
@@ -378,33 +378,22 @@ public:
         return m_nextParticlesPos.size() > 0;
     }
 
-    // Tobe removed
-    void load_anisotropic(int iter){
-        size_t buffer_size = sizeof(float) // timestep
-                + num_particle * 3 * sizeof(unsigned short)
-                + num_particle; // buffer
-        size_t begin_size = sizeof(int) + sizeof(double);
-
-        m_file_stream->seekg(buffer_size * (iter) + begin_size);
-
-        auto pos = load_next_particle();
-        std::cout << "Load vel at iter " << iter << ", " << m_cur_time << std::endl;
-
-        m_kernel.build(pos, m_labels);
-    }
-
-
     float get_cur_time(){return m_cur_time;}
     size_t get_fluid_sim_step(){return m_cur_time/0.0005;}
 
+    // Offset in data file
+    void offset(int num_iter){
+        size_t buffer_size = sizeof(float) // timestep
+                + num_particle * 3 * sizeof(unsigned short) // position
+                + num_particle; // buffer connected component
+        m_file_stream->seekg(buffer_size*(num_iter), std::ios_base::cur);
+    }
 private:
     float m_cur_time;
     std::vector<uint8_t> m_labels;
     std::vector<vec3> load_next_particle(int speed = 1){
-        size_t buffer_size = sizeof(float) // timestep
-                + num_particle * 3 * sizeof(unsigned short) // position
-                + num_particle; // buffer connected component
-        m_file_stream->seekg(buffer_size*(speed-1), std::ios_base::cur);
+        // Offset data
+        offset(speed - 1);
 
         std::vector<short> pos_i(num_particle * 3);
         m_labels.resize(num_particle);
